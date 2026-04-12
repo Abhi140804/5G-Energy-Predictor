@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>5G Energy Consumption — Predictive Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #090e1a; --surface: #111827; --surface2: #1a2539;
+      --border:  rgba(99,179,237,.15); --accent: #3b82f6; --accent2: #8b5cf6;
+      --accent3: #06b6d4; --green: #10b981; --text: #e2e8f0; --muted: #94a3b8;
+      --radius: 16px; --glow: 0 0 40px rgba(59,130,246,.25);
+    }
+    body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; overflow-x:hidden; }
+    body::before,body::after { content:''; position:fixed; border-radius:50%; filter:blur(120px); pointer-events:none; z-index:0; }
+    body::before { width:600px;height:600px;background:rgba(59,130,246,.12);top:-200px;left:-200px; }
+    body::after  { width:500px;height:500px;background:rgba(139,92,246,.10);bottom:-150px;right:-100px; }
+
+    .wrapper { position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:0 24px 60px; }
+
+    header {
+      padding:36px 0 28px; display:flex; align-items:center; justify-content:space-between;
+      flex-wrap:wrap; gap:16px; border-bottom:1px solid var(--border);
+    }
+    .logo-group { display:flex;align-items:center;gap:14px; }
+    .logo-icon {
+      width:48px;height:48px;border-radius:14px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      display:flex;align-items:center;justify-content:center;font-size:22px;
+      box-shadow:var(--glow);
+    }
+    header h1 { font-size:1.4rem;font-weight:700; }
+    header p.sub { font-size:.85rem;color:var(--muted);margin-top:2px; }
+
+    /* Loading banner */
+    #loadingBanner {
+      display:flex;align-items:center;gap:10px;
+      background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);
+      color:#fbbf24;border-radius:12px;padding:12px 18px;margin:20px 0;
+      font-size:.88rem;font-weight:500;
+    }
+    #loadingBanner.hidden { display:none; }
+    .spinner { width:18px;height:18px;border:2px solid rgba(251,191,36,.3);border-top-color:#fbbf24;border-radius:50%;animation:spin 1s linear infinite;flex-shrink:0; }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .badge {
+      display:inline-flex;align-items:center;gap:6px;
+      background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);
+      color:var(--green);border-radius:99px;padding:5px 14px;font-size:.78rem;font-weight:600;
+    }
+    .badge::before { content:'';display:block;width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite; }
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.4)}}
+
+    .stat-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:28px 0; }
+    .stat-card {
+      background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+      padding:22px 24px;position:relative;overflow:hidden;transition:transform .2s,box-shadow .2s;
+    }
+    .stat-card:hover { transform:translateY(-3px);box-shadow:0 8px 32px rgba(59,130,246,.15); }
+    .stat-card::before { content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grad); }
+    .stat-card:nth-child(1){ --grad:linear-gradient(90deg,#3b82f6,#06b6d4); }
+    .stat-card:nth-child(2){ --grad:linear-gradient(90deg,#8b5cf6,#ec4899); }
+    .stat-card:nth-child(3){ --grad:linear-gradient(90deg,#10b981,#3b82f6); }
+    .stat-card:nth-child(4){ --grad:linear-gradient(90deg,#f59e0b,#ef4444); }
+    .stat-label { font-size:.75rem;color:var(--muted);font-weight:500;letter-spacing:.5px;text-transform:uppercase; }
+    .stat-value { font-size:2rem;font-weight:800;margin-top:8px; }
+    .stat-note  { font-size:.75rem;color:var(--muted);margin-top:4px; }
+
+    .main-grid { display:grid;grid-template-columns:400px 1fr;gap:24px; }
+    @media(max-width:900px){ .main-grid{ grid-template-columns:1fr; } }
+
+    .card { background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px; }
+    .card-title { font-size:1rem;font-weight:700;margin-bottom:22px;display:flex;align-items:center;gap:8px; }
+    .card-title span.icon { width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;background:rgba(59,130,246,.15); }
+
+    .form-group { margin-bottom:18px; }
+    label { display:block;font-size:.78rem;color:var(--muted);font-weight:500;margin-bottom:7px;letter-spacing:.3px; }
+    input[type=number], select {
+      width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+      border-radius:10px;padding:11px 14px;font-size:.9rem;font-family:inherit;outline:none;
+      transition:border-color .2s,box-shadow .2s;
+    }
+    input[type=range] { width:100%;accent-color:var(--accent);cursor:pointer; }
+    input:focus,select:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+    select option { background:var(--surface2); }
+
+    .range-row { display:flex;align-items:center;gap:10px; }
+    .form-row  { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+
+    #predictBtn {
+      width:100%;padding:14px;
+      background:linear-gradient(135deg,var(--accent),var(--accent2));
+      color:#fff;border:none;border-radius:12px;font-size:1rem;font-weight:700;
+      font-family:inherit;cursor:pointer;margin-top:6px;
+      transition:opacity .2s,transform .15s,box-shadow .2s;
+      box-shadow:0 4px 20px rgba(59,130,246,.35);letter-spacing:.3px;
+    }
+    #predictBtn:hover { opacity:.9;transform:translateY(-1px);box-shadow:0 8px 30px rgba(59,130,246,.5); }
+    #predictBtn:active { transform:scale(.97); }
+    #predictBtn:disabled { opacity:.5;cursor:not-allowed;transform:none; }
+
+    #resultBox {
+      margin-top:20px;padding:22px;
+      background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(139,92,246,.08));
+      border:1px solid rgba(59,130,246,.25);border-radius:14px;text-align:center;
+      display:none;animation:fadeIn .4s ease;
+    }
+    #resultBox.show { display:block; }
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    #resultBox .label { font-size:.75rem;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px; }
+    #resultBox .value {
+      font-size:2.6rem;font-weight:800;
+      background:linear-gradient(135deg,#60a5fa,#a78bfa);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      margin:8px 0 4px;
+    }
+    #resultBox .unit   { font-size:.85rem;color:var(--muted); }
+    #resultBox .rating { margin-top:12px;font-size:.8rem; }
+
+    .right-panel { display:flex;flex-direction:column;gap:24px; }
+    .chart-card  { flex:1;min-height:240px; }
+    .chart-wrap  { position:relative;height:220px; }
+
+    #errorMsg { color:#ef4444;font-size:.82rem;margin-top:8px;display:none; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="logo-group">
+      <div class="logo-icon">📡</div>
+      <div>
+        <h1>5G Energy Predictor</h1>
+        <p class="sub">Predictive Modeling for 5G Base Station Energy Consumption</p>
+      </div>
+    </div>
+    <div class="badge" id="statusBadge">Loading Model…</div>
+  </header>
+
+  <!-- Loading banner shown until model is ready -->
+  <div id="loadingBanner">
+    <div class="spinner"></div>
+    <span>Model is training on 92,000+ records — this takes ~30 seconds. The page will auto-update when ready.</span>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Dataset Size</div>
+      <div class="stat-value" id="statSamples">—</div>
+      <div class="stat-note">Total records</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Training R²</div>
+      <div class="stat-value" id="statTrainR2">—</div>
+      <div class="stat-note">Variance explained</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Test R²</div>
+      <div class="stat-value" id="statTestR2">—</div>
+      <div class="stat-note">Generalization score</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Features Used</div>
+      <div class="stat-value" id="statFeatures">—</div>
+      <div class="stat-note">After one-hot encoding</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <!-- Form -->
+    <div class="card">
+      <div class="card-title"><span class="icon">⚙️</span> Configure Station</div>
+
+      <div class="form-group">
+        <label for="bs">Base Station ID</label>
+        <select id="bs"><option>Loading…</option></select>
+      </div>
+
+      <div class="form-group">
+        <label>Traffic Load &nbsp;<span id="loadVal" style="color:var(--accent3)">0.25</span></label>
+        <div class="range-row">
+          <span style="font-size:.75rem;color:var(--muted)">0</span>
+          <input type="range" id="load" min="0" max="1" step="0.01" value="0.25"
+                 oninput="document.getElementById('loadVal').textContent=parseFloat(this.value).toFixed(2)"/>
+          <span style="font-size:.75rem;color:var(--muted)">1</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>ESMODE &nbsp;<span id="esmodeVal" style="color:var(--accent3)">1.00</span></label>
+        <div class="range-row">
+          <span style="font-size:.75rem;color:var(--muted)">0</span>
+          <input type="range" id="esmode" min="0" max="2" step="0.01" value="1.0"
+                 oninput="document.getElementById('esmodeVal').textContent=parseFloat(this.value).toFixed(2)"/>
+          <span style="font-size:.75rem;color:var(--muted)">2</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>TX Power (dBm) &nbsp;<span id="txVal" style="color:var(--accent3)">6.87</span></label>
+        <div class="range-row">
+          <span style="font-size:.75rem;color:var(--muted)">5.38</span>
+          <input type="range" id="txpower" min="5.381" max="8.376" step="0.01" value="6.87"
+                 oninput="document.getElementById('txVal').textContent=parseFloat(this.value).toFixed(2)"/>
+          <span style="font-size:.75rem;color:var(--muted)">8.38</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Year</label>
+          <input type="number" id="year" value="2023" min="2020" max="2030"/>
+        </div>
+        <div class="form-group">
+          <label>Month</label>
+          <input type="number" id="month" value="6" min="1" max="12"/>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Day</label>
+          <input type="number" id="day" value="15" min="1" max="31"/>
+        </div>
+        <div class="form-group">
+          <label>Hour (0–23)</label>
+          <input type="number" id="hour" value="12" min="0" max="23"/>
+        </div>
+      </div>
+
+      <button id="predictBtn" onclick="predict()" disabled>⏳ Model Loading…</button>
+      <div id="errorMsg"></div>
+
+      <div id="resultBox">
+        <div class="label">Predicted Energy Consumption</div>
+        <div class="value" id="predValue">—</div>
+        <div class="unit">kWh (normalized)</div>
+        <div class="rating" id="predRating"></div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="right-panel">
+      <div class="card chart-card">
+        <div class="card-title"><span class="icon">🕐</span> Average Energy by Hour of Day</div>
+        <div class="chart-wrap"><canvas id="hourChart"></canvas></div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-title"><span class="icon">📅</span> Average Energy by Month</div>
+        <div class="chart-wrap"><canvas id="monthChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.font.family = 'Inter';
+  let hourChart, monthChart, chartsLoaded = false;
+
+  // ── Poll /status until model is ready ─────────────────────────────────────
+  async function pollStatus() {
+    try {
+      const r = await fetch('/status');
+      const d = await r.json();
+      if (d.ready) {
+        onModelReady();
+      } else {
+        setTimeout(pollStatus, 2000);
+      }
+    } catch(e) {
+      setTimeout(pollStatus, 2000);
+    }
+  }
+
+  async function onModelReady() {
+    // Update badge
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = 'Model Online';
+    badge.style.background = 'rgba(16,185,129,.12)';
+    badge.style.border = '1px solid rgba(16,185,129,.3)';
+    badge.style.color = '#10b981';
+
+    // Hide loading banner
+    document.getElementById('loadingBanner').classList.add('hidden');
+
+    // Enable button
+    const btn = document.getElementById('predictBtn');
+    btn.disabled = false;
+    btn.textContent = '⚡ Predict Energy Consumption';
+
+    // Fetch live stats for stat cards + BS dropdown
+    const statsRes = await fetch('/stats');
+    const stats    = await statsRes.json();
+
+    // Update stat cards
+    document.getElementById('statSamples').textContent  = stats.n_samples.toLocaleString();
+    document.getElementById('statTrainR2').textContent  = (stats.train_r2 * 100).toFixed(1) + '%';
+    document.getElementById('statTestR2').textContent   = (stats.test_r2  * 100).toFixed(1) + '%';
+    document.getElementById('statFeatures').textContent = stats.n_features;
+
+    // Populate BS dropdown
+    const sel = document.getElementById('bs');
+    sel.innerHTML = '';
+    stats.bs_options.forEach(bs => {
+      const o = document.createElement('option');
+      o.value = o.textContent = bs;
+      sel.appendChild(o);
+    });
+
+    // Draw charts
+    if (!chartsLoaded) {
+      drawCharts(stats.hourly_avg, stats.monthly_avg);
+      chartsLoaded = true;
+    }
+  }
+
+  function drawCharts(hourly, monthly) {
+    const hCtx = document.getElementById('hourChart').getContext('2d');
+    hourChart = new Chart(hCtx, {
+      type: 'line',
+      data: {
+        labels: Object.keys(hourly).map(h => `${h}:00`),
+        datasets: [{
+          label: 'Avg Energy', data: Object.values(hourly),
+          borderColor: '#3b82f6',
+          backgroundColor: ctx => {
+            const g = ctx.chart.ctx.createLinearGradient(0,0,0,220);
+            g.addColorStop(0,'rgba(59,130,246,.35)'); g.addColorStop(1,'rgba(59,130,246,0)');
+            return g;
+          },
+          borderWidth:2.5, pointRadius:4, pointBackgroundColor:'#3b82f6', tension:0.45, fill:true,
+        }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{ x:{grid:{color:'rgba(255,255,255,.05)'}}, y:{grid:{color:'rgba(255,255,255,.05)'}} }
+      }
+    });
+
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const mValues = Array.from({length:12}, (_,i) => monthly[i+1] ?? 0);
+    const mCtx = document.getElementById('monthChart').getContext('2d');
+    monthChart = new Chart(mCtx, {
+      type: 'bar',
+      data: {
+        labels: months,
+        datasets: [{
+          label:'Avg Energy', data:mValues,
+          backgroundColor: months.map((_,i) => `hsla(${200+i*10},80%,60%,.75)`),
+          borderRadius:6, borderSkipped:false,
+        }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{ x:{grid:{display:false}}, y:{grid:{color:'rgba(255,255,255,.05)'}} }
+      }
+    });
+  }
+
+  // ── Predict ────────────────────────────────────────────────────────────────
+  async function predict() {
+    const btn   = document.getElementById('predictBtn');
+    const errEl = document.getElementById('errorMsg');
+    btn.disabled = true; btn.textContent = '⏳ Predicting…'; errEl.style.display = 'none';
+
+    const payload = {
+      bs:      document.getElementById('bs').value,
+      load:    parseFloat(document.getElementById('load').value),
+      esmode:  parseFloat(document.getElementById('esmode').value),
+      txpower: parseFloat(document.getElementById('txpower').value),
+      year:    parseInt(document.getElementById('year').value),
+      month:   parseInt(document.getElementById('month').value),
+      day:     parseInt(document.getElementById('day').value),
+      hour:    parseInt(document.getElementById('hour').value),
+    };
+    try {
+      const res  = await fetch('/predict', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      document.getElementById('predValue').textContent = data.prediction.toFixed(3);
+      const p = data.prediction;
+      document.getElementById('predRating').textContent =
+        p < 20 ? '🟢 Very Low — Efficient operation'
+        : p < 40 ? '🟡 Moderate — Normal range'
+        : p < 60 ? '🟠 High — Consider optimization'
+        : '🔴 Very High — Attention needed';
+
+      const box = document.getElementById('resultBox');
+      box.classList.remove('show'); void box.offsetWidth; box.classList.add('show');
+    } catch(err) {
+      errEl.textContent = '⚠️ ' + err.message; errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false; btn.textContent = '⚡ Predict Energy Consumption';
+    }
+  }
+
+  // ── Start ──────────────────────────────────────────────────────────────────
+  pollStatus();
+</script>
+</body>
+</html>
