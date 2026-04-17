@@ -136,4 +136,4 @@ def stats():
 
 
 if __name__ == "__main__":
-    app.run(debug=False, port=5050, use_reloader=False)
+    app.run(host="0.0.0.0", port=10000)
